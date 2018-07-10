@@ -21,6 +21,9 @@
 #
 #
 # Changes:
+#   10/09/2015 pdcabales <proletaryo@gmail.com>
+#      - replaced openssl with curl to get accurate date for expiration
+#
 #   10/30/2008 dja <alden@math.ohio-state.edu>
 #      - fixed a bug which caused it to not deal with certs that expire
 #        on a single digit day (thanks to Christian Sava, Kyle Smith &
@@ -58,14 +61,14 @@ use Getopt::Long;
 use lib "/usr/lib64/nagios/plugins";
 use utils qw(%ERRORS &print_revision &support &usage);
 
-my $PROGNAME="check_ssl_certificates";
-my $REVISION="1.2";
+my $PROGNAME="check_ssl_certificates_via_curl";
+my $REVISION="0.1";
 
 #
 $ENV{PATH}="/usr/sbin:/usr/bin:/bin";
 
 #
-my $openssl = "/usr/bin/openssl";
+my $curl = '/usr/bin/curl';
 
 my $critical = 7;
 my $help;
@@ -88,7 +91,6 @@ if (GetOptions(
                "c:s" => \$critical,
                "h"   => \$help,
                "H:s" => \$host,
-               "o=s" => \$openssl,
                "p=i" => \$port,
                "v"   => \$verbose,
                "V"   => \$version,
@@ -114,43 +116,46 @@ if (! utils::is_hostname($host)) {
   exit $ERRORS{'UNKNOWN'};
 }
 
-open(OPENSSL, "$openssl s_client -connect $host:$port $additional < /dev/null 2>&1 | $openssl x509 -enddate -noout |") ||
-  die "unable to open $openssl: $!";
+# original command used was openssl, replaced with curl [pdcabales]
+open(CURL, "$curl -v -k https://$host:$port 2>&1 | /bin/grep -E '^\*' |") ||
+  die "unable to open $curl: $!";
 
 my $date;
-while (<OPENSSL>) {
-  if ($_ =~ /^notAfter=(.*)/) {
+while (<CURL>) {
+  if ($_ =~ /^\*\s+expire date:\s+(.*)/) {
     $date = $1;
     chomp($date);
 #    last;
   }
 }
-close(OPENSSL);
+close(CURL);
 
 $date =~ s/ +/ /g;
 
-my ($month, $day, $hour, $min, $sec, $year, $tz) = split(/[\s+|:]/, $date);
+# sample date: 2016-09-25 08:41:37 GMT
+my ($year, $month, $day, $hour, $min, $sec, $tz) = split(/[\s+|:-]/, $date);
 print "m=$month, d=$day, h=$hour, m=$min, s=$sec, y=$year, z=$tz\n";
 
-my $daysLeft = int((timegm($sec, $min, $hour, $day, $months{$month}, $year - 1900) - time()) / 86400);
+# my $daysLeft = int((timegm($sec, $min, $hour, $day, $months{$month}, $year - 1900) - time()) / 86400);
+my $daysLeft = int((timegm($sec, $min, $hour, $day, $month - 1, $year - 1900) - time()) / 86400);
 
 my $cn="this certificate";
-if ($verbose) {
-
-  open(OPENSSL, "$openssl s_client -connect $host:$port $additional < /dev/null 2>&1 |") ||
-    die "unable to open $openssl: $!";
-
-  while (<OPENSSL>) {
-    next unless $_ =~ /Certificate chain/;
-
-    while (<OPENSSL>) {
-      next unless $_ =~ /CN=(.*)/;
-      ($cn) = split(/\//, $1);
-      $cn .= "[$host]" if ($cn ne $host);
-      last;
-    }
-  }
-}
+# if ($verbose) {
+#
+#   open(OPENSSL, "$openssl s_client -connect $host:$port $additional < /dev/null 2>&1 |") ||
+#     die "unable to open $openssl: $!";
+#
+#   while (<OPENSSL>) {
+#     next unless $_ =~ /Certificate chain/;
+#
+#     while (<OPENSSL>) {
+#       next unless $_ =~ /CN=(.*)/;
+#       ($cn) = split(/\//, $1);
+#       $cn .= "[$host]" if ($cn ne $host);
+#       last;
+#     }
+#   }
+# }
 
 if ($daysLeft < 0) {
   print "$PROGNAME: CRITICAL - $cn expired " . abs($daysLeft) . " day(s) ago.\n";
@@ -183,7 +188,6 @@ Check if an SSL certificate is close to expiring
 -c <num>   exit with CRITICAL status if number of days left is less than <num>
 -h         show this help script
 -H <host>  check the certificate on the indicated host
--o <path>  path to openssl binary
 -p <port>  check the certificate on the specified port
 -w <num>   exit with WARNING status if number of days left is less than <num>
 -v         show the number of days left
