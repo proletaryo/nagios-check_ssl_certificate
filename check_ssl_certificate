@@ -130,7 +130,13 @@ while (<CURL>) {
 }
 close(CURL);
 
-$date =~ s/ +/ /g;
+if ($date) {
+  $date =~ s/ +/ /g;
+}
+else {
+  print "$PROGNAME: CRITICAL - Can't extract SSL certificate date\n";
+  exit $ERRORS{'CRITICAL'};
+}
 
 # sample date: 2016-09-25 08:41:37 GMT
 my ($year, $month, $day, $hour, $min, $sec, $tz) = split(/[\s+|:-]/, $date);
