@@ -1,4 +1,4 @@
-#!/usr/bin/perl -w
+#!/usr/bin/perl
 #
 # check_ssl_certificate
 #   Nagios script to check ssl certificate expirations
@@ -56,9 +56,11 @@
 #
 #
 use strict;
+use warnings;
 use Time::Local;
 use Getopt::Long;
-use lib "/usr/lib64/nagios/plugins";
+#use lib "/usr/lib64/nagios/plugins";
+use lib "/usr/local/nagios/libexec";
 use utils qw(%ERRORS &print_revision &support &usage);
 
 my $PROGNAME="check_ssl_certificates_via_curl";
@@ -112,7 +114,7 @@ if ($help) {
 }
 
 if (! utils::is_hostname($host)) {
-  usage("");
+  print "$PROGNAME: UNKNOWN - Invalid FQDN = $host\n";
   exit $ERRORS{'UNKNOWN'};
 }
 
